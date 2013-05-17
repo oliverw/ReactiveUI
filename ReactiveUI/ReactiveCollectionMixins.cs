@@ -390,7 +390,7 @@ namespace ReactiveUI
 
         public override void Reset()
         {
-            using (base.SuppressChangeNotifications()) {
+            using (base.SuppressChangeNotifications(warnIfApplicable: false)) {
                 if (this.Count > 0)
                     internalClear();
 

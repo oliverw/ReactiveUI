@@ -329,9 +329,14 @@ namespace ReactiveUI
 
         public IDisposable SuppressChangeNotifications()
         {
+            return SuppressChangeNotifications(warnIfApplicable: true);
+        }
+
+        protected IDisposable SuppressChangeNotifications(bool warnIfApplicable)
+        {
             Interlocked.Increment(ref _suppressionRefCount);
 
-            if (!_hasWhinedAboutNoResetSub && _resetSubCount == 0) {
+            if (warnIfApplicable && !_hasWhinedAboutNoResetSub && _resetSubCount == 0) {
                 LogHost.Default.Warn("SuppressChangeNotifications was called (perhaps via AddRange), yet you do not");
                 LogHost.Default.Warn("have a subscription to ShouldReset. This probably isn't what you want, as ItemsAdded");
                 LogHost.Default.Warn("and friends will appear to 'miss' items");
