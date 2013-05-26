@@ -10,6 +10,7 @@ using System.Reactive.Threading.Tasks;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Data;
 
 namespace ReactiveUI
 {
@@ -24,6 +25,45 @@ namespace ReactiveUI
         {
             binderImplementation = new PropertyBinderImplementation();
         }
+
+		internal class ValueConverterWrapper :
+			IBindingTypeConverter
+		{
+			public ValueConverterWrapper (IValueConverter converter, bool toSource)
+			{
+				this.converter = converter;
+				this.toSource = toSource;
+			}
+
+			IValueConverter converter;
+			bool toSource;
+
+			#region IBindingTypeConverter implementation
+			public int GetAffinityForObjects(Type lhs, Type rhs)
+			{
+				throw new NotImplementedException();
+			}
+
+			public bool TryConvert(object from, Type toType, object conversionHint, out object result)
+			{
+				try
+				{
+					if(!toSource)
+						result = converter.Convert(from, toType, conversionHint, null);
+					else
+						result = converter.ConvertBack(from, toType, conversionHint, null);
+
+					return true;
+				}
+
+				catch
+				{
+					result = null;
+					return false;
+				}
+			}
+			#endregion
+		}
 
         /// <summary>
         /// Binds the specified view model property to the given view property.
@@ -57,11 +97,14 @@ namespace ReactiveUI
                 TViewModel viewModel,
                 Expression<Func<TViewModel, TVMProp>> vmProperty,
                 Expression<Func<TView, TVProp>> viewProperty,
-                object conversionHint = null)
+                object conversionHint = null,
+				IValueConverter valueConverter = null)
             where TViewModel : class
             where TView : IViewFor
         {
-            return binderImplementation.Bind(viewModel, view, vmProperty, viewProperty, (IObservable<Unit>)null, conversionHint);
+			return binderImplementation.Bind(viewModel, view, vmProperty, viewProperty, (IObservable<Unit>)null, conversionHint,
+				valueConverter == null ? null : new ValueConverterWrapper(valueConverter, false),
+				valueConverter == null ? null : new ValueConverterWrapper(valueConverter, true));
         }
 
 
@@ -140,11 +183,14 @@ namespace ReactiveUI
                 Expression<Func<TViewModel, TVMProp>> vmProperty,
                 Expression<Func<TView, TVProp>> viewProperty,
                 IObservable<TDontCare> signalViewUpdate,
-                object conversionHint = null)
+                object conversionHint = null,
+				IValueConverter valueConverter = null)
             where TViewModel : class
             where TView : IViewFor
         {
-            return binderImplementation.Bind(viewModel, view, vmProperty, viewProperty, signalViewUpdate, conversionHint);
+			return binderImplementation.Bind(viewModel, view, vmProperty, viewProperty, signalViewUpdate, conversionHint, 
+				valueConverter == null ? null : new ValueConverterWrapper(valueConverter, false),
+				valueConverter == null ? null : new ValueConverterWrapper(valueConverter, true));
         }
 
         /// <summary>
@@ -183,11 +229,11 @@ namespace ReactiveUI
                 TViewModel viewModel,
                 Expression<Func<TViewModel, TProp>> vmProperty,
                 IObservable<TDontCare> signalViewUpdate,
-                object conversionHint = null)
+				object conversionHint = null)
             where TViewModel : class
             where TView : IViewFor
         {
-            return binderImplementation.Bind<TViewModel, TView, TProp, TDontCare, TDontCare>(viewModel, view, vmProperty, null, signalViewUpdate, conversionHint);
+			return binderImplementation.Bind<TViewModel, TView, TProp, TDontCare, TDontCare>(viewModel, view, vmProperty, null, signalViewUpdate, conversionHint);
         }
 
         /// <summary>
@@ -231,11 +277,13 @@ namespace ReactiveUI
                 Expression<Func<TViewModel, TVMProp>> vmProperty,
                 Expression<Func<TView, TVProp>> viewProperty,
                 Func<TVMProp> fallbackValue = null,
-                object conversionHint = null)
+                object conversionHint = null,
+				IValueConverter valueConverter = null)
             where TViewModel : class
             where TView : IViewFor
         {
-            return binderImplementation.OneWayBind(viewModel, view, vmProperty, viewProperty, fallbackValue, conversionHint);
+			return binderImplementation.OneWayBind(viewModel, view, vmProperty, viewProperty, fallbackValue, conversionHint,
+				valueConverter == null ? null : new ValueConverterWrapper(valueConverter, false));
         }
 
         /// <summary>
@@ -384,9 +432,11 @@ namespace ReactiveUI
             TTarget target,
             Expression<Func<TTarget, TTValue>> property,
             Func<TValue> fallbackValue = null,
-            object conversionHint = null)
+            object conversionHint = null,
+			IValueConverter valueConverter = null)
         {
-            return binderImplementation.BindTo(This, target, property, fallbackValue, conversionHint);
+			return binderImplementation.BindTo(This, target, property, fallbackValue, conversionHint,
+				valueConverter == null ? null : new ValueConverterWrapper(valueConverter, false));
         }
     }
 
@@ -443,7 +493,9 @@ namespace ReactiveUI
                 Expression<Func<TViewModel, TVMProp>> vmProperty,
                 Expression<Func<TView, TVProp>> viewProperty,
                 IObservable<TDontCare> signalViewUpdate,
-                object conversionHint)
+				object conversionHint,
+				IBindingTypeConverter vmToViewConverterOverride = null,
+				IBindingTypeConverter viewToVMConverterOverride = null)
             where TViewModel : class
             where TView : IViewFor;
 
@@ -491,7 +543,8 @@ namespace ReactiveUI
                 Expression<Func<TViewModel, TVMProp>> vmProperty,
                 Expression<Func<TView, TVProp>> viewProperty,
                 Func<TVMProp> fallbackValue,
-                object conversionHint)
+				object conversionHint,
+				IBindingTypeConverter vmToViewConverterOverride = null)
             where TViewModel : class
             where TView : IViewFor;
 
@@ -554,7 +607,8 @@ namespace ReactiveUI
             TTarget target,
             Expression<Func<TTarget, TTValue>> property,
             Func<TValue> fallbackValue,
-            object conversionHint);
+			object conversionHint,
+			IBindingTypeConverter vmToViewConverterOverride = null);
     }
 
     public class PropertyBinderImplementation : IPropertyBinderImplementation 
@@ -610,7 +664,9 @@ namespace ReactiveUI
                 Expression<Func<TViewModel, TVMProp>> vmProperty,
                 Expression<Func<TView, TVProp>> viewProperty,
                 IObservable<TDontCare> signalViewUpdate,
-                object conversionHint)
+				object conversionHint,
+				IBindingTypeConverter vmToViewConverterOverride = null,
+				IBindingTypeConverter viewToVMConverterOverride = null)
             where TViewModel : class
             where TView : IViewFor
         {
@@ -632,8 +688,8 @@ namespace ReactiveUI
                 viewPropChain = Reflection.ExpressionToPropertyNames(viewProperty);
             }
 
-            var vmToViewConverter = getConverterForTypes(typeof (TVMProp), typeof (TVProp));
-            var viewToVMConverter = getConverterForTypes(typeof (TVProp), typeof (TVMProp));
+			var vmToViewConverter = vmToViewConverterOverride ?? getConverterForTypes(typeof (TVMProp), typeof (TVProp));
+			var viewToVMConverter = viewToVMConverterOverride ?? getConverterForTypes(typeof (TVProp), typeof (TVMProp));
 
             if (vmToViewConverter == null || viewToVMConverter == null) {
                 throw new ArgumentException(
@@ -755,7 +811,8 @@ namespace ReactiveUI
                 Expression<Func<TViewModel, TVMProp>> vmProperty,
                 Expression<Func<TView, TVProp>> viewProperty,
                 Func<TVMProp> fallbackValue = null,
-                object conversionHint = null)
+				object conversionHint = null,
+				IBindingTypeConverter vmToViewConverterOverride = null)
             where TViewModel : class
             where TView : IViewFor
         {
@@ -769,7 +826,7 @@ namespace ReactiveUI
                 viewPropChain = Reflection.getDefaultViewPropChain(view, Reflection.ExpressionToPropertyNames(vmProperty));
 
                 var viewType = Reflection.GetTypesForPropChain(typeof (TView), viewPropChain).Last();
-                var converter = getConverterForTypes(typeof (TVMProp), viewType);
+				var converter = vmToViewConverterOverride ?? getConverterForTypes(typeof (TVMProp), viewType);
 
                 if (converter == null) {
                     throw new ArgumentException(String.Format("Can't convert {0} to {1}. To fix this, register a IBindingTypeConverter", typeof (TVMProp), viewType));
@@ -790,7 +847,7 @@ namespace ReactiveUI
                     return converter.TryConvert(fallbackValue(), typeof(TVProp), conversionHint, out tmp) ? (TVProp)tmp : default(TVProp);
                 };
             } else {
-                var converter = getConverterForTypes(typeof (TVMProp), typeof (TVProp));
+				var converter = vmToViewConverterOverride ?? getConverterForTypes(typeof (TVMProp), typeof (TVProp));
 
                 if (converter == null) {
                     throw new ArgumentException(String.Format("Can't convert {0} to {1}. To fix this, register a IBindingTypeConverter", typeof (TVMProp), typeof(TVProp)));
@@ -897,13 +954,14 @@ namespace ReactiveUI
             TTarget target,
             Expression<Func<TTarget, TTValue>> property,
             Func<TValue> fallbackValue = null,
-            object conversionHint = null)
+			object conversionHint = null,
+			IBindingTypeConverter vmToViewConverterOverride = null)
         {
             var viewPropChain = Reflection.ExpressionToPropertyNames(property);
             var ret = evalBindingHooks(This, target, null, viewPropChain, BindingDirection.OneWay);
             if (!ret) return Disposable.Empty;
                 
-            var converter = getConverterForTypes(typeof (TValue), typeof(TTValue));
+			var converter = vmToViewConverterOverride ?? getConverterForTypes(typeof (TValue), typeof(TTValue));
 
             if (converter == null) {
                 throw new ArgumentException(String.Format("Can't convert {0} to {1}. To fix this, register a IBindingTypeConverter", typeof (TValue), typeof(TTValue)));
